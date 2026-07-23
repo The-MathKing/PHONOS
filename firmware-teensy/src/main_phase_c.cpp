@@ -4,6 +4,7 @@
 #include "synthesis_engine.h"
 #include "tflite_micro_stub.h"
 #include "adc_dma.h"
+#include "affective_dsp.h"
 
 // ── Ring Buffer Dimensions ───────────────────────────────────────────────────
 static constexpr uint16_t RING_DEPTH    = 512;
@@ -41,6 +42,7 @@ void setup() {
     AudioMemory(15);
     synth.begin();
     dsp_fastica_init();
+    affective_dsp_init();
 
     // Init TFLite
     const tflite::Model* model = tflite::GetModel(nullptr);
@@ -121,6 +123,27 @@ void loop() {
             normalized[3][i] = separated[3][i];
         }
 
+        // 3a. CNN 2: CMSIS-DSP Affective Feature Extraction (Sub-budget: <150us)
+        uint32_t affective_start = ARM_DWT_CYCCNT;
+
+        // Build 256-sample analysis windows from the latest RING_DEPTH=512 frame
+        // We use the latter 256 samples (most recent) to minimize analysis latency
+        float pzt_window[AFFECTIVE_BUFFER_SIZE];
+        float semg_window[AFFECTIVE_BUFFER_SIZE];
+        const uint32_t WINDOW_OFFSET = RING_DEPTH - AFFECTIVE_BUFFER_SIZE;
+        for (uint32_t i = 0; i < AFFECTIVE_BUFFER_SIZE; i++) {
+            pzt_window[i]  = normalized[2][WINDOW_OFFSET + i]; // PZT on channel 2
+            semg_window[i] = normalized[0][WINDOW_OFFSET + i]; // Primary sEMG on channel 0
+        }
+
+        AffectiveFeatureVector affective_features;
+        affective_dsp_extract(pzt_window, semg_window, &affective_features);
+
+        uint32_t affective_cycles = ARM_DWT_CYCCNT - affective_start;
+        float affective_us = (float)affective_cycles / 600.0f;
+        static float max_affective_us = 0;
+        if (affective_us > max_affective_us) max_affective_us = affective_us;
+
         // 3. Inference & Synthesis (Profiled)
         uint32_t start_cycles = ARM_DWT_CYCCNT;
         
@@ -143,13 +166,21 @@ void loop() {
         // 450us execution ceiling bypass for Model B
         uint32_t current_cycles = ARM_DWT_CYCCNT - start_cycles;
         if (current_cycles < (450 * 600)) {
-            // Map EDA standard deviation against baseline
-            float eda_current_mean = 0.0f;
-            arm_mean_f32(separated[3], RING_DEPTH, &eda_current_mean);
-            float delta = abs(eda_current_mean - eda_baseline_mean);
-            
-            emo_vector.arousal = constrain(delta / (eda_baseline_stddev * 3.0f + 1e-6f), 0.0f, 1.0f);
-            emo_vector.valence = (emo_vector.arousal * 2.0f) - 1.0f; 
+            // ── CNN 2: Affective Modulator Inference ──────────────────────────
+            // Feed the 4-DOF physiological feature vector to TFLite Model B.
+            // Features: [f0, rms_energy, mnf, mdf] — all in [0.0, 1.0]
+            tflite::TfLiteTensor* model_b_input = interpreter_b->input(0);
+            if (model_b_input != nullptr) {
+                model_b_input->data_float[0] = affective_features.f0;
+                model_b_input->data_float[1] = affective_features.rms_energy;
+                model_b_input->data_float[2] = affective_features.mnf;
+                model_b_input->data_float[3] = affective_features.mdf;
+            }
+            // In production: interpreter_b->Invoke();
+            // For now, derive emotion from CMSIS-DSP features directly:
+            // High f0 + high RMS = high arousal; low MDF = muscular fatigue (low valence)
+            emo_vector.arousal = constrain((affective_features.f0 * 0.5f + affective_features.rms_energy * 0.5f), 0.0f, 1.0f);
+            emo_vector.valence = constrain((affective_features.mdf - 0.5f) * 2.0f, -1.0f, 1.0f);
         } else {
             Serial.println("[!] WARNING: 450us ceiling exceeded. Bypassing Model B.");
         }
@@ -165,8 +196,10 @@ void loop() {
         if (execution_time_us > max_time_us) max_time_us = execution_time_us;
         static uint32_t last_print = 0;
         if (millis() - last_print > 1000) {
-            Serial.printf("[Phase C] Max System Latency: %.2f us (Limit: 500 us)\n", max_time_us);
+            Serial.printf("[Phase C] System Latency: %.2f us (Limit: 500 us). Affective DSP: %.2f us (Limit: 150 us)\n",
+                          max_time_us, max_affective_us);
             max_time_us = 0;
+            max_affective_us = 0;
             last_print = millis();
         }
 
