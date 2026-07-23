@@ -65,13 +65,15 @@ if (serialPort) {
             } else if (buffer.length >= 18 && buffer[17] === FRAME_END) {
                 frameLength = 18; // Phase B (Raw 4-channel)
             } else {
-                // Keep looking or wait for more data if we haven't reached max possible frame size
+                // If we have enough bytes for the largest frame but no valid END byte, it's corrupted.
                 if (buffer.length >= 34) {
-                    // Invalid frame, drop the start byte and continue searching
+                    // Frame Misalignment Detected (e.g. dropped byte)
+                    // Drop the current 0xAA and let the loop find the next valid 0xAA
+                    console.warn("[!] Frame alignment error detected. Dropping corrupted fragment and realigning.");
                     buffer = buffer.subarray(1);
                     continue;
                 }
-                break;
+                break; // Not enough data for a full frame yet
             }
 
             // Extract frame payload

@@ -44,9 +44,20 @@ let targetState = {
     pitch: 0, yaw: 0, intensity: 0, f1: 0, f2: 0, f3: 0, arousal: 0, valence: 0
 };
 
+let isFrozen = false;
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+        isFrozen = !isFrozen;
+        console.log(isFrozen ? "[INFO] Visualizer Frozen" : "[INFO] Visualizer Resumed");
+    }
+});
+
 // Animation Loop
 function animate() {
     requestAnimationFrame(animate);
+
+    if (isFrozen) return; // Halt interpolation
 
     // Smoothly interpolate current mesh state towards target state
     mesh.rotation.z += (targetState.yaw * 0.5 - mesh.rotation.z) * 0.1;

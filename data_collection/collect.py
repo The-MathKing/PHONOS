@@ -8,6 +8,7 @@ from parselmouth.praat import call
 import time
 import os
 import threading
+import scipy.signal
 
 # Configuration
 WS_URI = "ws://localhost:8080"
@@ -76,8 +77,12 @@ def extract_acoustic_features(audio_data, sr):
         f0_contour.append(f0)
         f1_contour.append(f1)
         f2_contour.append(f2)
-        
-    return np.array(timestamps), np.array(f0_contour), np.array(f1_contour), np.array(f2_contour)
+    # Apply 3-point median filter for outlier masking
+    f0_filtered = scipy.signal.medfilt(np.array(f0_contour), kernel_size=3)
+    f1_filtered = scipy.signal.medfilt(np.array(f1_contour), kernel_size=3)
+    f2_filtered = scipy.signal.medfilt(np.array(f2_contour), kernel_size=3)
+    
+    return np.array(timestamps), f0_filtered, f1_filtered, f2_filtered
 
 def process_and_align_session(bio_data_log, audio_path, sample_rate=2000):
     """
@@ -136,6 +141,34 @@ def record_audio_and_bio():
     print("[*] RECORDING STOPPED")
     
     audio_data = audio_data.flatten()
+    
+    # SNR Validation Check
+    if len(bio_data_buffer) > 100:
+        a0_vals = []
+        for packet in bio_data_buffer:
+            data = packet[1]
+            if 'a0' in data:
+                a0_vals.append(data['a0'])
+            elif 'phoneticVector' in data: # Fallback to Phase C shape if needed
+                a0_vals.append(data['phoneticVector'][0])
+                
+        if len(a0_vals) > 0:
+            a0_arr = np.array(a0_vals)
+            sorted_a0 = np.sort(np.abs(a0_arr))
+            # Bottom 20% for baseline, Top 20% for burst
+            baseline_idx = max(1, int(len(sorted_a0) * 0.2))
+            burst_idx = int(len(sorted_a0) * 0.8)
+            
+            rms_baseline = np.sqrt(np.mean(sorted_a0[:baseline_idx]**2)) + 1e-6
+            rms_burst = np.sqrt(np.mean(sorted_a0[burst_idx:]**2))
+            
+            snr = 20 * np.log10(rms_burst / rms_baseline)
+            print(f"[!] sEMG SNR Detected: {snr:.2f} dB")
+            
+            if snr < 15.0:
+                print("[-] WARNING: SNR below 15 dB threshold. Trial corrupted by noise.")
+                print("[-] REJECTING DATASET. Please check electrode gel/contact and recalibrate.")
+                return # Abort save
     
     # Process Acoustic Targets via Praat
     print("[+] Extracting clinical phonetic metrics (f0, F1, F2)...")

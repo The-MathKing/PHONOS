@@ -137,13 +137,22 @@ void loop() {
         exp_vector.formant_3 = abs(separated[2][1]) * 0.01f;
 
         SSIEmotionVector emo_vector;
-        // Map EDA standard deviation against baseline
-        float eda_current_mean = 0.0f;
-        arm_mean_f32(separated[3], RING_DEPTH, &eda_current_mean);
-        float delta = abs(eda_current_mean - eda_baseline_mean);
+        emo_vector.arousal = 0.5f; // Safe defaults
+        emo_vector.valence = 0.0f;
         
-        emo_vector.arousal = constrain(delta / (eda_baseline_stddev * 3.0f + 1e-6f), 0.0f, 1.0f);
-        emo_vector.valence = (emo_vector.arousal * 2.0f) - 1.0f; 
+        // 450us execution ceiling bypass for Model B
+        uint32_t current_cycles = ARM_DWT_CYCCNT - start_cycles;
+        if (current_cycles < (450 * 600)) {
+            // Map EDA standard deviation against baseline
+            float eda_current_mean = 0.0f;
+            arm_mean_f32(separated[3], RING_DEPTH, &eda_current_mean);
+            float delta = abs(eda_current_mean - eda_baseline_mean);
+            
+            emo_vector.arousal = constrain(delta / (eda_baseline_stddev * 3.0f + 1e-6f), 0.0f, 1.0f);
+            emo_vector.valence = (emo_vector.arousal * 2.0f) - 1.0f; 
+        } else {
+            Serial.println("[!] WARNING: 450us ceiling exceeded. Bypassing Model B.");
+        }
 
         // Audio Synthesis
         synth.update(exp_vector, emo_vector);
