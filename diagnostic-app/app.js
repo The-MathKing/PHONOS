@@ -97,7 +97,7 @@ window.addEventListener('resize', () => {
 
 
 // --- WEBSOCKET API IMPLEMENTATION (Node.js Relay) ---
-const socket = io();
+const socket = io("http://localhost:3000");
 
 socket.on('connect', () => {
     console.log("Connected to Node.js Relay Server");
