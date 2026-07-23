@@ -43,6 +43,33 @@ def build_affective_model(long_window=100):
     model.compile(optimizer='adam', loss='mse')
     return model
 
+def evaluate_formant_accuracy(model, x_test, y_test):
+    """
+    Validation Metrics Module:
+    Calculates the Mean Absolute Error (MAE) specifically for F1 and F2 in Hertz.
+    Goal: MAE < 50Hz to claim high-fidelity phonetic synthesis.
+    """
+    print("\n[!] Running Formant Accuracy Validation...")
+    predictions = model.predict(x_test, verbose=0)
+    
+    # Assuming y_test and predictions have F1 at index 3 and F2 at index 4 (from 6-DOF: Pitch, Yaw, Int, F1, F2, F3)
+    f1_true = y_test[:, 3]
+    f2_true = y_test[:, 4]
+    
+    f1_pred = predictions[:, 3]
+    f2_pred = predictions[:, 4]
+    
+    mae_f1 = np.mean(np.abs(f1_true - f1_pred))
+    mae_f2 = np.mean(np.abs(f2_true - f2_pred))
+    
+    print(f"    -> F1 Mean Absolute Error: {mae_f1:.2f} Hz")
+    print(f"    -> F2 Mean Absolute Error: {mae_f2:.2f} Hz")
+    
+    if mae_f1 < 50.0 and mae_f2 < 50.0:
+        print("    [SUCCESS] Formant MAE is under 50Hz. High-fidelity synthesis validated!")
+    else:
+        print("    [WARNING] Formant MAE exceeds 50Hz. Further training required.")
+
 def convert_to_tflite_float32(model):
     """ Compiles to FLOAT32 TFLite to leverage the Cortex-M7 FPU natively """
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
@@ -76,6 +103,11 @@ def main():
     # Here is where the agent would load the dataset and call model.fit()
     # For now, we compile untrained structures to verify the pipeline.
     print("[!] Bypassing training - compiling structural flatbuffers...")
+    
+    # Mocking evaluation
+    mock_x_test = np.random.rand(10, 50, 3)
+    mock_y_test = np.random.rand(10, 6) * 1000 # Scale to hz range mock
+    evaluate_formant_accuracy(phonetic_model, mock_x_test, mock_y_test)
     
     tflite_phonetic = convert_to_tflite_float32(phonetic_model)
     tflite_affective = convert_to_tflite_float32(affective_model)

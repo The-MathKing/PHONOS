@@ -79,6 +79,42 @@ def extract_acoustic_features(audio_data, sr):
         
     return np.array(timestamps), np.array(f0_contour), np.array(f1_contour), np.array(f2_contour)
 
+def process_and_align_session(bio_data_log, audio_path, sample_rate=2000):
+    """
+    Synchronizes high-speed 4-channel bio telemetry matrices with 
+    clinical acoustic targets extracted via Praat-Parselmouth.
+    """
+    # 1. Load sound file into Parselmouth
+    sound = parselmouth.Sound(audio_path)
+    
+    # 2. Extract continuous clinical features via Praat cross-correlation
+    pitch = sound.to_pitch()
+    formants = sound.to_formant_burg(time_step=0.005) # 5ms windows matching ML steps
+    
+    aligned_dataset = []
+    
+    # 3. Step through the timeline and index time-locked values
+    for packet in bio_data_log:
+        t = packet['timestamp']
+        
+        # Pull bio values (Normalized by your 5-second firmware calibration)
+        inputs = [packet['ch1_emg'], packet['ch2_emg'], packet['pzt'], packet['eda']]
+        
+        # Synchronize corresponding acoustic features
+        f0 = pitch.get_value_at_time(t)
+        f1 = formants.get_value_at_time(1, t)
+        f2 = formants.get_value_at_time(2, t)
+        
+        # Handle unvoiced segments (Praat returns NaN if no pitch detected)
+        f0_clean = 0.0 if np.isnan(f0) else f0
+        f1_clean = 500.0 if np.isnan(f1) else f1 # Default fallback baseline
+        f2_clean = 1500.0 if np.isnan(f2) else f2
+        
+        # Construct row: [Inputs (4)] -> [Phonetic Targets (2 Formants...)] -> [Affective Targets (f0...)]
+        aligned_dataset.append(inputs + [f1_clean, f2_clean, f0_clean])
+        
+    return np.array(aligned_dataset)
+
 def record_audio_and_bio():
     """ Handles synchronous audio recording and triggers bio logging """
     global is_recording, bio_data_buffer

@@ -51,6 +51,10 @@ void setup() {
     interpreter_a->AllocateTensors();
     interpreter_b->AllocateTensors();
 
+    // Enable internal CPU clock cycle counter for latency profiling
+    ARM_DEMCR |= ARM_DEMCR_TRCENA;
+    ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
+
     adc_dma.begin((volatile uint16_t*)ring, RING_CHANNELS, RING_DEPTH);
     calib_start_time = millis();
 }
@@ -117,11 +121,13 @@ void loop() {
             normalized[3][i] = separated[3][i];
         }
 
-        // 3. Inference
+        // 3. Inference & Synthesis (Profiled)
+        uint32_t start_cycles = ARM_DWT_CYCCNT;
+        
         tflite::TfLiteTensor* input = interpreter_a->input(0);
         if (input != nullptr) memcpy(input->data_float, normalized, sizeof(normalized));
 
-        // Mock inference results
+        // Mock inference results (Replace with interpreter_a->Invoke() and interpreter_b->Invoke())
         SSIExpressionVector exp_vector;
         exp_vector.pitch     = abs(separated[0][0]) * 0.01f; 
         exp_vector.yaw       = abs(separated[1][0]) * 0.01f; 
@@ -139,8 +145,21 @@ void loop() {
         emo_vector.arousal = constrain(delta / (eda_baseline_stddev * 3.0f + 1e-6f), 0.0f, 1.0f);
         emo_vector.valence = (emo_vector.arousal * 2.0f) - 1.0f; 
 
-        // 3. Audio Synthesis
+        // Audio Synthesis
         synth.update(exp_vector, emo_vector);
+        
+        uint32_t execution_cycles = ARM_DWT_CYCCNT - start_cycles;
+        float execution_time_us = (float)execution_cycles / 600.0f; // Teensy 4.1 clock factor
+
+        // Periodically print max execution time
+        static float max_time_us = 0;
+        if (execution_time_us > max_time_us) max_time_us = execution_time_us;
+        static uint32_t last_print = 0;
+        if (millis() - last_print > 1000) {
+            Serial.printf("[Phase C] Max System Latency: %.2f us (Limit: 500 us)\n", max_time_us);
+            max_time_us = 0;
+            last_print = millis();
+        }
 
         // 4. Telemetry: 0xAA, 8 floats, 0xBB
         uint8_t packet[34];
