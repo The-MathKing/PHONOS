@@ -1,0 +1,23 @@
+# Root gitignore for SSI Neuro-Prosthetic (PHONOS)
+.DS_Store
+*.log
+*.tmp
+
+# Virtual Environments
+venv/
+.venv/
+
+# PlatformIO build outputs & caches
+.pio/
+build/
+*.elf
+*.hex
+*.bin
+*.o
+*.d
+
+# Python / Jupyter artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.egg-info/

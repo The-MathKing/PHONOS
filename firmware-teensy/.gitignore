@@ -1,0 +1,10 @@
+# firmware-teensy gitignore
+.pio/
+.venv/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+build/
+__pycache__/
