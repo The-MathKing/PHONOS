@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <Audio.h>
 #include "tflite_micro_stub.h" // For SSIExpressionVector
+#include "effect_formant_biquad.h"
 
 /**
  * @brief SSI Synthesis Engine
@@ -22,20 +23,13 @@ private:
     // Core sound generation (glottal pulse model)
     AudioSynthWaveform       glottal_source;
     
-    // Vocal tract formants (State Variable Filters)
-    AudioFilterStateVariable formant1;
-    AudioFilterStateVariable formant2;
-    AudioFilterStateVariable formant3;
+    // Vocal tract formants (FPU Biquad Cascade)
+    AudioEffectFormantBiquad formant_shifter;
     
-    // Mixers
-    AudioMixer4              formant_mixer;
+    // Output mixer (Optional, routes to I2S)
     AudioMixer4              output_mixer;
     
     // Connections
     AudioConnection* patchCord1;
     AudioConnection* patchCord2;
-    AudioConnection* patchCord3;
-    AudioConnection* patchCord4;
-    AudioConnection* patchCord5;
-    AudioConnection* patchCord6;
 };
