@@ -21,6 +21,9 @@
 #include <SD.h>
 #include <SPI.h>
 #include "dsp_processing.h"
+#include "synthesis_engine.h"
+#include "telemetry_plotter.h"
+#include "tflite_micro_stub.h"
 
 // ── Pin Definitions ──────────────────────────────────────────────────────────
 static constexpr uint8_t PIN_SEMG_LEFT  = A0;   ///< Left  submental sEMG input
@@ -59,6 +62,14 @@ struct CalibrationFrameHeader {
 
 // ── Hardware Timer ───────────────────────────────────────────────────────────
 IntervalTimer sample_timer;
+
+// ── Audio Synthesis & Inference Engines ──────────────────────────────────────
+SSISynthesizer synth;
+
+// TFLite memory footprint (statically allocated in DTCM RAM)
+alignas(16) static uint8_t tensor_arena[SSI_TENSOR_ARENA_SIZE];
+static tflite::MicroInterpreter* interpreter = nullptr;
+static tflite::AllOpsResolver    resolver;
 
 // ── ISR: ADC Sampling ────────────────────────────────────────────────────────
 /**
@@ -194,6 +205,21 @@ void setup() {
     analogReadResolution(12);
     analogReadAveraging(4); // 4-sample HW average: ~20 µs per channel
 
+    // Initialize Synthesis Engine (Audio memory allocation)
+    AudioMemory(15);
+    synth.begin();
+
+    // Initialize TFLite Inference Engine
+    static tflite::MicroInterpreter static_interpreter(
+        tflite::GetModel(nullptr), // Real impl reads ssi_model_data
+        resolver, 
+        tensor_arena, 
+        sizeof(tensor_arena), 
+        nullptr
+    );
+    interpreter = &static_interpreter;
+    interpreter->AllocateTensors();
+
     // Initialize SD card for calibration logging
     if (!init_sd_logging()) {
         Serial.println("[SSI] WARN: SD logging disabled — running without persistence.");
@@ -233,6 +259,28 @@ void loop() {
             RING_DEPTH
         );
 
-        // TODO: Route separated[] to inference engine (TFLite-Micro)
+        // 1. Copy separated signals into input tensor
+        tflite::TfLiteTensor* input = interpreter->input(0);
+        if (input != nullptr) {
+            // Note: In reality, flatten the 3x512 array into the 1D tensor buffer
+            memcpy(input->data_float, separated, sizeof(separated));
+        }
+
+        // 2. Run inference
+        if (interpreter->Invoke() == 0) {
+            // 3. Extract 6-DOF expression vector
+            tflite::TfLiteTensor* output = interpreter->output(0);
+            if (output != nullptr) {
+                SSIExpressionVector exp_vector;
+                // Assuming output is a flat array of 6 floats
+                memcpy(&exp_vector, output->data_float, sizeof(SSIExpressionVector));
+                
+                // 4. Drive real-time audio synthesis
+                synth.update(exp_vector);
+            }
+        }
+        
+        // Optional Week 8 Debug: Stream telemetry to serial plotter
+        // stream_telemetry_plotter(local_ring[0][0], local_ring[1][0], local_ring[2][0]);
     }
 }
