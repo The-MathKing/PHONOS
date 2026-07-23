@@ -29,6 +29,11 @@ uint32_t eda_samples = 0;
 float eda_baseline_stddev = 0.0f;
 float eda_baseline_mean = 0.0f;
 
+float semg_sum[2] = {0.0f, 0.0f};
+float semg_sq_sum[2] = {0.0f, 0.0f};
+float semg_baseline_mean[2] = {0.0f, 0.0f};
+float semg_baseline_stddev[2] = {0.0f, 0.0f};
+
 void setup() {
     Serial.begin(115200);
     while (!Serial && millis() < 3000);
@@ -62,26 +67,59 @@ void loop() {
         float separated[RING_CHANNELS][RING_DEPTH];
         dsp_fastica_process(local_ring, separated, RING_CHANNELS, RING_DEPTH);
 
-        // 1. Auto-Calibration (First 3 seconds)
+        // 1. Auto-Calibration (First 5 seconds)
         if (!calibration_complete) {
             for (int i=0; i<RING_DEPTH; i++) {
-                float v = separated[3][i]; // EDA
-                eda_sum += v;
-                eda_sq_sum += (v * v);
+                float v_eda = separated[3][i];
+                float v_a0 = separated[0][i];
+                float v_a1 = separated[1][i];
+                
+                eda_sum += v_eda;
+                eda_sq_sum += (v_eda * v_eda);
+                
+                semg_sum[0] += v_a0;
+                semg_sq_sum[0] += (v_a0 * v_a0);
+                
+                semg_sum[1] += v_a1;
+                semg_sq_sum[1] += (v_a1 * v_a1);
+                
                 eda_samples++;
             }
-            if (millis() - calib_start_time > 3000) {
+            if (millis() - calib_start_time > 5000) {
                 eda_baseline_mean = eda_sum / eda_samples;
                 eda_baseline_stddev = sqrt((eda_sq_sum / eda_samples) - (eda_baseline_mean * eda_baseline_mean));
+                
+                for (int ch=0; ch<2; ch++) {
+                    semg_baseline_mean[ch] = semg_sum[ch] / eda_samples;
+                    semg_baseline_stddev[ch] = sqrt((semg_sq_sum[ch] / eda_samples) - (semg_baseline_mean[ch] * semg_baseline_mean[ch]));
+                }
+                
                 calibration_complete = true;
-                // Optional: Print calibration results
+                Serial.println("[SSI] Edge Calibration Complete. Normalizing to [0.0, 1.0]");
             }
             return; // Skip inference until calibrated
         }
 
-        // 2. Inference
+        // 2. Real-Time Tensor Normalization [0.0, 1.0]
+        float normalized[RING_CHANNELS][RING_DEPTH];
+        for (int i = 0; i < RING_DEPTH; i++) {
+            // Normalize sEMG using baseline mean and 3 standard deviations (99.7% capture)
+            for (int ch = 0; ch < 2; ch++) {
+                float v = separated[ch][i];
+                float range = semg_baseline_stddev[ch] * 3.0f + 1e-6f;
+                float norm_v = (v - semg_baseline_mean[ch] + range) / (2.0f * range);
+                normalized[ch][i] = constrain(norm_v, 0.0f, 1.0f);
+            }
+            // PZT is zero-mean acoustic transient, bypass normalization for 1D-CNN handling
+            normalized[2][i] = separated[2][i];
+            
+            // EDA is handled in emotion mapping
+            normalized[3][i] = separated[3][i];
+        }
+
+        // 3. Inference
         tflite::TfLiteTensor* input = interpreter_a->input(0);
-        if (input != nullptr) memcpy(input->data_float, separated, sizeof(separated));
+        if (input != nullptr) memcpy(input->data_float, normalized, sizeof(normalized));
 
         // Mock inference results
         SSIExpressionVector exp_vector;
