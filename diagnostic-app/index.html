@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHONOS Diagnostic Telemetry</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: 'Inter', -apple-system, sans-serif;
+            overflow: hidden;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0 0 10px 0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        .data-panel {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid #333;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            width: 300px;
+            backdrop-filter: blur(10px);
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        .label {
+            color: #888;
+        }
+        .value {
+            color: #00ffcc;
+            font-weight: bold;
+        }
+        button {
+            background: #00ffcc;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #00ccaa;
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+    </style>
+    <!-- Import Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1>PHONOS Telemetry</h1>
+        <div class="data-panel">
+            <div class="data-row"><span class="label">Pitch:</span> <span id="val-pitch">0.000</span></div>
+            <div class="data-row"><span class="label">Yaw:</span> <span id="val-yaw">0.000</span></div>
+            <div class="data-row"><span class="label">Intensity:</span> <span id="val-intensity">0.000</span></div>
+            <div class="data-row"><span class="label">Formant 1:</span> <span id="val-f1">0.000</span></div>
+            <div class="data-row"><span class="label">Formant 2:</span> <span id="val-f2">0.000</span></div>
+            <div class="data-row"><span class="label">Formant 3:</span> <span id="val-f3">0.000</span></div>
+            <div class="data-row"><span class="label">Arousal:</span> <span id="val-arousal" style="color: #ff3366;">0.000</span></div>
+            <div class="data-row"><span class="label">Valence:</span> <span id="val-valence" style="color: #33aaff;">0.000</span></div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

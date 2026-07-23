@@ -16,7 +16,10 @@ public:
     AudioEffectFormantBiquad() : AudioStream(1, inputQueueArray) {
         // Initialize CMSIS-DSP Biquad Instance for 2 stages
         arm_biquad_cascade_df1_init_f32(&biquad_inst, 2, pCoeffs, pState);
-        setFormants(500.0f, 1500.0f); // Default safe values
+        current_f1 = 500.0f;
+        current_f2 = 1500.0f;
+        current_q = 5.0f;
+        setFormants(current_f1, current_f2);
     }
 
     virtual void update(void) override;
@@ -28,7 +31,16 @@ public:
      */
     void setFormants(float f1, float f2);
 
+    /**
+     * @brief Dynamically adjust the Q-factor of the formant filters.
+     * @param q Resonance Q-factor
+     */
+    void setQ(float q);
+
 private:
+    float current_f1;
+    float current_f2;
+    float current_q;
     audio_block_t *inputQueueArray[1];
 
     // CMSIS-DSP requires specific array sizing:

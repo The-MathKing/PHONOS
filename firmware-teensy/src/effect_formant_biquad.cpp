@@ -44,12 +44,18 @@ void AudioEffectFormantBiquad::calcBiquadBandpass(float center_freq, float Q, fl
 }
 
 void AudioEffectFormantBiquad::setFormants(float f1, float f2) {
-    // Fixed Q-factor for vocal tract resonance simulation
-    float Q = 5.0f; 
+    current_f1 = f1;
+    current_f2 = f2;
 
     // Stage 1: F1 Resonance
-    calcBiquadBandpass(f1, Q, &pCoeffs[0]);
+    calcBiquadBandpass(f1, current_q, &pCoeffs[0]);
 
     // Stage 2: F2 Resonance
-    calcBiquadBandpass(f2, Q, &pCoeffs[5]);
+    calcBiquadBandpass(f2, current_q, &pCoeffs[5]);
+}
+
+void AudioEffectFormantBiquad::setQ(float q) {
+    current_q = q;
+    calcBiquadBandpass(current_f1, current_q, &pCoeffs[0]);
+    calcBiquadBandpass(current_f2, current_q, &pCoeffs[5]);
 }

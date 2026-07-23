@@ -15,21 +15,33 @@ public:
     
     /**
      * @brief Updates synthesizer parameters continuously.
-     * @param vector 6-DOF regression output from the CNN
+     * @param exp_vector 6-DOF phonetic regression output
+     * @param emo_vector 2-DOF emotion regression output
      */
-    void update(const SSIExpressionVector& vector);
+    void update(const SSIExpressionVector& exp_vector, const SSIEmotionVector& emo_vector);
 
 private:
     // Core sound generation (glottal pulse model)
-    AudioSynthWaveform       glottal_source;
+    AudioSynthWaveformModulated glottal_source;
+    AudioSynthWaveform          lfo_vibrato;
     
+    // Emotion Dynamics
+    AudioEffectWaveshaper       saturation_block;
+    AudioEffectEnvelope         envelope;
+
     // Vocal tract formants (FPU Biquad Cascade)
-    AudioEffectFormantBiquad formant_shifter;
+    AudioEffectFormantBiquad    formant_shifter;
     
     // Output mixer (Optional, routes to I2S)
-    AudioMixer4              output_mixer;
+    AudioMixer4                 output_mixer;
     
     // Connections
     AudioConnection* patchCord1;
     AudioConnection* patchCord2;
+    AudioConnection* patchCord3;
+    AudioConnection* patchCord4;
+    AudioConnection* patchCord5;
+
+    // Pre-computed waveshaping curve for harmonic saturation
+    float waveshape_curve[17];
 };

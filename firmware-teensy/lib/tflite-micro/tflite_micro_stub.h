@@ -92,6 +92,8 @@ public:
 
 } // namespace tflite
 
+constexpr int kTfLiteOk = 0;
+
 // ── SSI Inference Output: 6-DOF Expression Vector ───────────────────────────
 /**
  * @brief Output structure for the SSI expression inference engine.
@@ -113,6 +115,19 @@ struct SSIExpressionVector {
     float formant_1;
     float formant_2;
     float formant_3;
+};
+
+// ── SSI Emotion Output: 2-DOF Vector ─────────────────────────────────────────
+/**
+ * @brief Output structure for the SSI emotion inference engine.
+ *
+ * Maps to the 1D-CNN regression output from EDA and PZT transients:
+ *   [0] arousal   — Physiological excitement/stress (normalized, 0..+1)
+ *   [1] valence   — Emotional positivity/negativity (normalized, -1..+1)
+ */
+struct SSIEmotionVector {
+    float arousal;
+    float valence;
 };
 
 // Model inference tensor arena size (bytes reserved in DTCM RAM)
